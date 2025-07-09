@@ -1,0 +1,6 @@
+to_zip:
+  - isrStatistics
+  - isr_config
+  - isr_log
+  - isr_metadata
+  - packages
