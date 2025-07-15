@@ -12,9 +12,8 @@ import lsst.daf.butler as daf_butler
 from lsst.pipe.base import QuantumGraph
 
 
-def get_zip_file_locations(qgraph, dstypes):
-    repo = qgraph.metadata['butler_argument']
-    run_collection = qgraph.metadata['output_run']
+def get_zip_file_locations(repo, qgraph, dstypes):
+    run_collection = qgraph.metadata["output_run"]
     butler = daf_butler.Butler(repo, collections=[run_collection])
     zip_file_locations = {}
     for dstype in dstypes:
@@ -23,13 +22,14 @@ def get_zip_file_locations(qgraph, dstypes):
     return zip_file_locations
 
 
-# Read in dataset types to zip.
-zip_config_file = os.environ['ZIP_DSTYPE_CONFIG']
-with open(zip_config_file) as fobj:
-    zip_candidates = set(yaml.safe_load(fobj)['to_zip'])
-
+# Retrieve command line arguments.
 qgraph_file = sys.argv[1]
 butler_config = sys.argv[2]
+
+# Read in dataset types to zip.
+zip_config_file = os.environ["ZIP_DSTYPE_CONFIG"]
+with open(zip_config_file) as fobj:
+    zip_candidates = set(yaml.safe_load(fobj)["to_zip"])
 
 # Get the dataset types of the QG output refs.
 qgraph = QuantumGraph.loadUri(qgraph_file)
@@ -44,7 +44,7 @@ for ref in output_refs:
 to_zip = sorted(dstypes.intersection(zip_candidates))
 not_to_zip = sorted(dstypes.difference(zip_candidates))
 
-butler_exe = os.environ['DAF_BUTLER_DIR'] + "/bin/butler"
+butler_exe = os.environ["DAF_BUTLER_DIR"] + "/bin/butler"
 
 with tempfile.TemporaryDirectory() as zip_tmp_dir:
     # Zip the files for each dataset type individually.
@@ -73,27 +73,44 @@ with tempfile.TemporaryDirectory() as zip_tmp_dir:
                       zip_file]
         subprocess.check_call(ingest_zip)
 
+# Transfer the remaining dataset types directly to the destination repo.
+if not_to_zip:
+    transfer_from_graph = [butler_exe,
+                           "--long-log",
+                           "--log-level=VERBOSE",
+                           "transfer-from-graph",
+                           "--dataset-type",
+                           ",".join(not_to_zip),
+                           qgraph_file,
+                           butler_config,
+                           "--register-dataset-types",
+                           "--update-output-chain"]
+    subprocess.check_call(transfer_from_graph)
+
 # Rucio register each zip file.
-zip_file_locations = get_zip_file_locations(qgraph, to_zip)
+zip_file_locations = get_zip_file_locations(butler_config, qgraph, to_zip)
 for dstype, zip_file in zip_file_locations.items():
+    rucio_dataset = dstype  # What should this be?
     rucio_register = ["rucio-register",
                       "zips",
                       "--log-level=VERBOSE",
-                      f"--rucio-dataset",
-                      dstype,
-                      f"--zip-file",
+                      "--rucio-dataset",
+                      rucio_dataset,
+                      "--zip-file",
                       zip_file]
-    subprocess.check_call(rucio_register)
+#    subprocess.check_call(rucio_register)
 
-# Transfer the remaining dataset types directly to the destination repo.
-transfer_from_graph = [butler_exe,
-                       "--long-log",
-                       "--log-level=VERBOSE",
-                       "transfer-from-graph",
-                       "--dataset-type",
-                       ','.join(not_to_zip),
-                       qgraph_file,
-                       butler_config,
-                       "--register-dataset-types",
-                       "--update-output-chain"]
-subprocess.check_call(transfer_from_graph)
+# Rucio register the non-zip files.
+for dstype in not_to_zip:
+    rucio_dataset = dstype  # What should this be?
+    rucio_register = ["rucio-register",
+                      "data-products",
+                      "--rucio-dataset",
+                      rucio_dataset,
+                      "--dataset-type",
+                      dstype,
+                      "--collections",
+                      qgraph.metadata["output_run"],
+                      "--repo",
+                      butler_config]
+#    subprocess.check_call(rucio_register)
