@@ -73,19 +73,16 @@ with tempfile.TemporaryDirectory() as zip_tmp_dir:
                       zip_file]
         subprocess.check_call(ingest_zip)
 
-# Transfer the remaining dataset types directly to the destination repo.
-if not_to_zip:
-    transfer_from_graph = [butler_exe,
-                           "--long-log",
-                           "--log-level=VERBOSE",
-                           "transfer-from-graph",
-                           "--dataset-type",
-                           ",".join(not_to_zip),
-                           qgraph_file,
-                           butler_config,
-                           "--register-dataset-types",
-                           "--update-output-chain"]
-    subprocess.check_call(transfer_from_graph)
+# Transfer any remaining dataset types directly to the destination repo.
+transfer_from_graph = [butler_exe,
+                       "--long-log",
+                       "--log-level=VERBOSE",
+                       "transfer-from-graph",
+                       qgraph_file,
+                       butler_config,
+                       "--register-dataset-types",
+                       "--update-output-chain"]
+subprocess.check_call(transfer_from_graph)
 
 # Rucio register each zip file.
 zip_file_locations = get_zip_file_locations(butler_config, qgraph, to_zip)
